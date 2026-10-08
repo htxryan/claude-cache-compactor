@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    name: Validate and test
+    runs-on: ubuntu-latest
+    env:
+      DISABLE_AUTOUPDATER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Validate the plugin and marketplace
+        run: claude plugin validate .
+      - name: Run the hook tests
+        run: claude plugin test .
+      - name: Type check
+        run: |
+          # Loading the plugin makes Claude Code lay this build's types in
+          # .claude-plugin/types/ (gitignored). CI isn't logged in, so the run
+          # stops right after the load.
+          claude -p --plugin-dir . "load the plugin" < /dev/null > /dev/null 2>&1 || true
+          test -f .claude-plugin/types/claude-code/index.d.ts
+          npx -y -p typescript@5.6 tsc -p . --noEmit

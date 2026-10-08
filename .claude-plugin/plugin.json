@@ -1,0 +1,46 @@
+{
+  "name": "cache-compactor",
+  "version": "0.1.0",
+  "description": "Compacts an idle Claude Code session just before its prompt cache expires, so coming back to it doesn't re-send the whole conversation at full price.",
+  "author": {
+    "name": "Ryan Henderson"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/htxryan/claude-cache-compactor",
+  "documentationUrl": "https://github.com/htxryan/claude-cache-compactor#readme",
+  "keywords": [
+    "compact",
+    "auto-compact",
+    "prompt-caching",
+    "cache",
+    "idle",
+    "cost-optimization",
+    "token-savings"
+  ],
+  "userConfig": {
+    "ttlMinutes": {
+      "type": "number",
+      "title": "Prompt cache lifetime (minutes)",
+      "description": "How long the prompt cache lasts after a request. The timer counts from the session's last request.",
+      "default": 60
+    },
+    "leadSeconds": {
+      "type": "number",
+      "title": "Compact this long before it expires (seconds)",
+      "description": "Leaves time for the compaction's own request to start while the cache is still warm.",
+      "default": 120
+    },
+    "minTokens": {
+      "type": "number",
+      "title": "Smallest conversation to compact (tokens)",
+      "description": "Leaves a session alone when its conversation (the Messages row of /context) is smaller. 0 compacts every idle session.",
+      "default": 30000
+    },
+    "instructions": {
+      "type": "string",
+      "title": "Compaction instructions",
+      "description": "What the summary should keep, as you would type after /compact. Empty uses Claude Code's own.",
+      "default": ""
+    }
+  }
+}
