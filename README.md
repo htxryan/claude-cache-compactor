@@ -30,8 +30,9 @@ To try it without installing: `claude --plugin-dir path/to/claude-cache-compacto
 
 ## Use
 
-There's nothing to do: it runs in every interactive session.
+There's nothing to set up: it runs in every interactive session.
 
+- **Turn it off for one session:** `/cache-compactor:off`. The status line shows `auto-compact off` until `/cache-compactor:on` turns it back on. It stays off when you resume that session; `/clear` starts the next conversation with it on.
 - **See what's scheduled:** `/cache-compactor:status` says when the session will be compacted, or why it won't be, and what happened last time.
 - **Small conversations are left alone:** under 30k tokens (the Messages row of `/context`), compacting costs about as much as it saves. See `minTokens`.
 - **Only while Claude Code runs:** the timer lives in the Claude Code process. If the computer sleeps through the cache's last minutes, it wakes to an expired cache and leaves the session alone.
@@ -97,11 +98,12 @@ Set them in `/plugin` → cache-compactor, or in `~/.claude/settings.json`.
 - **It pays off when you come back.** Your next prompt then re-caches a short summary instead of the whole conversation. If you never return to the session, the compaction was spent for nothing.
 - **Compaction loses detail.** The summary replaces the conversation, as with `/compact`. `instructions` steers what it keeps.
 - **A turn waiting on you** (a permission prompt, a question) is still running, so there is no compaction, and the cache can expire under it.
+- **Updating or reloading the plugin mid-session** clears its timer until your next prompt.
 - **Another plugin or a `PreCompact` hook can veto it.** It is skipped, and the next turn sets the timer again.
 
 ## What it hooks
 
-The plugin is a mod: TypeScript in [hooks/register.ts](hooks/register.ts). Besides these events, it reads only Claude Code's prompt-caching variables (listed above), the `promptCacheTtl` setting, the session's model, its usage figures and, when a session is resumed, its transcript. In its own store it keeps the ids of sessions whose last event was a compaction. It sends nothing anywhere: its one request is the compaction, made by Claude Code.
+The plugin is a mod: TypeScript in [hooks/register.ts](hooks/register.ts). Besides these events, it reads only Claude Code's prompt-caching variables (listed above), the `promptCacheTtl` setting, the session's model, its usage figures and, when a session is resumed, its transcript. In its own store it keeps the ids of sessions whose last event was a compaction, and of sessions you turned it off for. It sends nothing anywhere: its one request is the compaction, made by Claude Code.
 
 - **`turn.start`:** cancels the timer while a turn runs.
 - **`turn.step`:** notes when each main-conversation request starts. Subagents' requests have a cache of their own.
@@ -110,10 +112,10 @@ The plugin is a mod: TypeScript in [hooks/register.ts](hooks/register.ts). Besid
 - **`classic.SessionStart`:** counts a resumed session from its last response, unless a compaction came after it.
 - **`session.end`:** clears the timer on `/clear`.
 - **`prompt.submit`:** names invalid settings, once.
-- **`command.run`:** answers `/cache-compactor:status`.
+- **`command.run`:** answers `/cache-compactor:status`, `:off` and `:on`.
 
 ```
-claude plugin test .   # 36 tests
+claude plugin test .   # 41 tests
 ```
 
 ## Sources

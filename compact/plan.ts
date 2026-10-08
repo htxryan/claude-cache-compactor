@@ -100,10 +100,12 @@ export type State = {
   anchor: number | null // start of the last main-conversation request
   lastWasCompact: boolean // nothing has happened since the last compaction
   turning: boolean // a turn is running
+  off: boolean // turned off for this session (/cache-compactor:off)
 }
 
 // Whether to compact now; when not, why.
 export function check(state: State, now: number, tokens: number | undefined, cache: Cache, s: Settings): { compact: true } | { compact: false; reason: string } {
+  if (state.off) return { compact: false, reason: 'it is turned off for this session' }
   if (state.anchor === null) return { compact: false, reason: 'nothing has been sent to Claude yet' }
   if (state.lastWasCompact) return { compact: false, reason: 'the last thing that happened was a compaction' }
   if (state.turning) return { compact: false, reason: 'a turn is running' }
@@ -130,11 +132,20 @@ export function compactedText(last: Extract<Last, { outcome: 'compacted' }>): st
   return `compacted after ${duration(last.idleMs)} idle, before the prompt cache expires${sizes}${cache}.`
 }
 
+export const ON_AGAIN = '/cache-compactor:on turns it back on.'
+
+// What /cache-compactor:off and :on say.
+export const offText = (was: boolean) => `Automatic compaction is ${was ? 'already' : 'now'} off for this session. ${ON_AGAIN}`
+export const onText = (was: boolean, status: string) =>
+  `Automatic compaction is ${was ? 'already on' : 'on again'} for this session. ${status}`
+
 // What /cache-compactor:status says.
 export function describe(args: { state: State; now: number; due: number | null; last: Last | null; cache: Cache | null; interactive: boolean }): string {
   const { state, now, due, last, cache } = args
   const lines: string[] = []
-  if (due !== null && cache?.ttlMs) {
+  if (state.off) {
+    lines.push(`Off for this session: ${ON_AGAIN}`)
+  } else if (due !== null && cache?.ttlMs) {
     lines.push(`Compacts in ${duration(Math.max(0, due - now))} if the session stays idle: the prompt cache expires ${duration(cache.ttlMs)} after the last request (${cache.why}).`)
   } else if (!args.interactive) {
     lines.push('Not scheduled: nothing draws this session (a headless run).')

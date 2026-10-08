@@ -103,6 +103,9 @@ async function turn($: any, clock: { advance: (ms: number) => Promise<void> }, o
 const status = async ($: any): Promise<string> =>
   (await $.command.run({ command: 'cache-compactor:status', args: '', origin: { kind: 'composer' }, presentation: {} })).text ?? ''
 
+const command = async ($: any, name: string): Promise<string> =>
+  (await $.command.run({ command: `cache-compactor:${name}`, args: '', origin: { kind: 'composer' }, presentation: {} })).text ?? ''
+
 const resume = ($: any, secondsAgo: number) =>
   $.classic.SessionStart({ hook_event_name: 'SessionStart', source: 'resume', session_id: 's', transcript_path: '', cwd: '', seconds_since_last_response: secondsAgo } as never)
 
@@ -148,12 +151,13 @@ describe('timing logic', () => {
 
   test('compacts only an idle, compactable session with the cache still warm', () => {
     const s = readSettings({}, [])
-    const idle = { anchor: T0, lastWasCompact: false, turning: false }
+    const idle = { anchor: T0, lastWasCompact: false, turning: false, off: false }
     expect(check(idle, T0 + 58 * MIN, 152_000, HOUR, s)).toEqual({ compact: true })
     expect(check(idle, T0 + 58 * MIN, undefined, HOUR, s)).toEqual({ compact: true })
     expect(check({ ...idle, anchor: null }, T0, 152_000, HOUR, s)).toEqual({ compact: false, reason: 'nothing has been sent to Claude yet' })
     expect(check({ ...idle, lastWasCompact: true }, T0 + 58 * MIN, 152_000, HOUR, s)).toEqual({ compact: false, reason: 'the last thing that happened was a compaction' })
     expect(check({ ...idle, turning: true }, T0 + 58 * MIN, 152_000, HOUR, s)).toEqual({ compact: false, reason: 'a turn is running' })
+    expect(check({ ...idle, off: true }, T0 + 58 * MIN, 152_000, HOUR, s)).toEqual({ compact: false, reason: 'it is turned off for this session' })
     expect(check(idle, T0 + 60 * MIN, 152_000, HOUR, s)).toEqual({ compact: false, reason: 'the cache had already expired (1 h since the last request, so the computer was probably asleep)' })
     expect(check(idle, T0 + 58 * MIN, 12_000, HOUR, s)).toEqual({ compact: false, reason: 'the conversation is small (12k tokens, under minTokens 30k)' })
   })
@@ -362,6 +366,68 @@ describe('when it leaves the session alone', () => {
     expect(calls.logs).toHaveLength(1)
     expect(calls.logs[0]).toStartWith("couldn't compact before the prompt cache expires: ")
     expect(calls.status).toEqual(['compacting before the prompt cache expires…', undefined])
+  })
+})
+
+describe('turning it off for a session', () => {
+  test('/cache-compactor:off stops the timer and says how to turn it back on', async ($, on) => {
+    const { calls, clock } = engine(on)
+    await turn($, clock)
+    expect(await command($, 'off')).toBe('Automatic compaction is now off for this session. /cache-compactor:on turns it back on.')
+    expect(calls.status).toEqual(['auto-compact off'])
+    await clock.advance(3 * 60 * MIN)
+    await turn($, clock)
+    await clock.advance(3 * 60 * MIN)
+    expect(calls.compacts).toEqual([])
+    expect(await status($)).toBe('Off for this session: /cache-compactor:on turns it back on.')
+    expect(await command($, 'off')).toBe('Automatic compaction is already off for this session. /cache-compactor:on turns it back on.')
+  })
+
+  test('/cache-compactor:on sets the timer again from the last request', async ($, on) => {
+    const { calls, clock } = engine(on)
+    await turn($, clock)
+    await command($, 'off')
+    await clock.advance(20 * MIN)
+    expect(await command($, 'on')).toBe(
+      'Automatic compaction is on again for this session. Compacts in 38 min if the session stays idle: the prompt cache expires 1 h after the last request (Claude subscription).',
+    )
+    expect(calls.status).toEqual(['auto-compact off', undefined])
+    await clock.advance(38 * MIN)
+    expect(calls.compacts).toEqual(['compact:'])
+  })
+
+  test('on past the moment it would have compacted waits for the next prompt', async ($, on) => {
+    const { calls, clock } = engine(on)
+    await turn($, clock)
+    await command($, 'off')
+    await clock.advance(59 * MIN)
+    expect(await command($, 'on')).toBe('Automatic compaction is on again for this session. The timer starts after your next prompt.')
+    await clock.advance(10 * MIN)
+    expect(calls.compacts).toEqual([])
+    await turn($, clock)
+    await clock.advance(58 * MIN)
+    expect(calls.compacts).toEqual(['compact:'])
+  })
+
+  test('on when it was never off says so', async ($, on) => {
+    engine(on)
+    expect(await command($, 'on')).toBe('Automatic compaction is already on for this session. Not scheduled: nothing has been sent to Claude yet.')
+  })
+
+  test('off lasts through a resume, and /clear starts the next conversation on', async ($, on) => {
+    const { calls, clock } = engine(on)
+    await turn($, clock)
+    await command($, 'off')
+    await $.session.end({ sessionId: 's1', reason: 'other' } as never)
+    await resume($, 60)
+    expect(await status($)).toBe('Off for this session: /cache-compactor:on turns it back on.')
+    await clock.advance(3 * 60 * MIN)
+    expect(calls.compacts).toEqual([])
+    // /clear: a new conversation, never resumed.
+    await $.session.end({ sessionId: 's1', reason: 'clear' } as never)
+    await turn($, clock)
+    await clock.advance(58 * MIN)
+    expect(calls.compacts).toEqual(['compact:'])
   })
 })
 

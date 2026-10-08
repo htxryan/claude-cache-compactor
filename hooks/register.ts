@@ -1,6 +1,6 @@
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import { check, compactedText, describe, dueAt, expiresAt, readSettings, resolveCache } from '../compact/plan'
+import { check, compactedText, describe, dueAt, expiresAt, offText, onText, readSettings, resolveCache } from '../compact/plan'
 import type { Cache, Last, Settings, State } from '../compact/plan'
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -40,21 +40,29 @@ async function readCache($: EngineInterface, s: Settings): Promise<Cache> {
   return resolveCache(s, { env, promptCacheTtl: settings.promptCacheTtl, model: await $.session.model(), rateLimits: usage?.rateLimits ?? [] })
 }
 
-// Sessions whose last event was a compaction, by id, kept in the plugin's
-// store so a resumed session knows (newest 100).
+// Session ids under a key of the plugin's store (newest 100 kept), so a
+// resumed session knows: `compacted`, whose last event was a compaction, and
+// `off`, turned off with /cache-compactor:off.
+async function stored($: EngineInterface, key: 'compacted' | 'off'): Promise<boolean> {
+  const map = (await $.store.get(key)) as Record<string, number> | undefined
+  return !!map && (await $.session.id()) in map
+}
+
+async function store($: EngineInterface, key: 'compacted' | 'off', value: boolean): Promise<void> {
+  const id = await $.session.id()
+  const map = { ...(((await $.store.get(key)) as Record<string, number> | undefined) ?? {}) }
+  delete map[id]
+  if (value) map[id] = await $.clock.now()
+  await $.store.set(key, Object.fromEntries(Object.entries(map).slice(-100)))
+}
+
 async function remember($: EngineInterface, ss: Session, compacted: boolean): Promise<void> {
   ss.marked = compacted
-  const id = await $.session.id()
-  const prev = (await $.store.get('compacted')) as Record<string, number> | undefined
-  const map = { ...(prev ?? {}) }
-  delete map[id]
-  if (compacted) map[id] = await $.clock.now()
-  await $.store.set('compacted', Object.fromEntries(Object.entries(map).slice(-100)))
+  await store($, 'compacted', compacted)
 }
 
 async function compactedLast($: EngineInterface): Promise<boolean> {
-  const map = (await $.store.get('compacted')) as Record<string, number> | undefined
-  if (map && (await $.session.id()) in map) return true
+  if (await stored($, 'compacted')) return true
   // A session compacted before this plugin knew it: the summary, then only
   // the replies compaction kept, no prompt of yours.
   const messages = await $.session.messages()
@@ -81,7 +89,7 @@ async function arm($: EngineInterface, ss: Session, s: Settings, settle: () => v
   settle()
   cancel(ss)
   ss.cache = cache
-  if (ss.anchor === null || ss.lastWasCompact || ss.turning || !isInteractive || cache.ttlMs === null) return
+  if (ss.off || ss.anchor === null || ss.lastWasCompact || ss.turning || !isInteractive || cache.ttlMs === null) return
   // A resumed session whose cache has already expired has nothing left to save.
   if (now >= expiresAt(ss.anchor, cache.ttlMs)) return
   const at = dueAt(ss.anchor, cache.ttlMs, s)
@@ -130,12 +138,38 @@ export const register: Register = (on, options) => {
   const invalid: string[] = []
   const s = readSettings(options, invalid)
   let warned = false // invalid settings were named once in this process
-  const ss: Session = { anchor: null, lastWasCompact: false, turning: false, timer: null, due: null, last: null, cache: null, gen: 0, marked: false }
+  const ss: Session = { anchor: null, lastWasCompact: false, turning: false, timer: null, due: null, last: null, cache: null, gen: 0, marked: false, off: false }
 
   // /cache-compactor:status (commands/status.md), answered here without the model.
   on('command.run', { command: 'cache-compactor:status' }, async $ => ({
     text: describe({ state: ss, now: await $.clock.now(), due: ss.due, last: ss.last, cache: ss.cache, interactive: await interactive($) }),
   })).catch(() => ({ text: "cache-compactor couldn't read its status." }))
+
+  // /cache-compactor:off and :on (commands/off.md, on.md), for this session
+  // only: kept across --resume, gone with /clear (a new conversation).
+  on('command.run', { command: 'cache-compactor:off' }, async $ => {
+    const was = ss.off
+    ss.off = true
+    cancel(ss)
+    await store($, 'off', true)
+    $.ui.status('auto-compact off')
+    return { text: offText(was) }
+  }).catch(() => ({ text: "cache-compactor couldn't turn itself off." }))
+
+  on('command.run', { command: 'cache-compactor:on' }, async $ => {
+    const was = !ss.off
+    ss.off = false
+    await store($, 'off', false)
+    $.ui.status(undefined)
+    await arm($, ss, s)
+    const now = await $.clock.now()
+    // Past the moment it would have compacted: you are here, so wait for your next prompt.
+    if (ss.due !== null && ss.due <= now) {
+      cancel(ss)
+      return { text: onText(was, 'The timer starts after your next prompt.') }
+    }
+    return { text: onText(was, describe({ state: ss, now, due: ss.due, last: null, cache: ss.cache, interactive: await interactive($) })) }
+  }).catch(() => ({ text: "cache-compactor couldn't turn itself on." }))
 
   on('prompt.submit', async ($, e, next) => {
     if (invalid.length && !warned) {
@@ -193,6 +227,10 @@ export const register: Register = (on, options) => {
   // unless a compaction came after it.
   on('classic.SessionStart', async ($, e, next) => {
     const result = await next(e)
+    if ((e.source === 'resume' || e.source === 'fork') && (await stored($, 'off'))) {
+      ss.off = true
+      $.ui.status('auto-compact off')
+    }
     if ((e.source === 'resume' || e.source === 'fork') && e.seconds_since_last_response !== undefined && !ss.turning) {
       if (await compactedLast($)) {
         ss.lastWasCompact = ss.marked = true
@@ -218,6 +256,8 @@ export const register: Register = (on, options) => {
     ss.last = null
     ss.cache = null
     ss.marked = false
+    if (ss.off) $.ui.status(undefined)
+    ss.off = false
     return next(e)
   })
 }
