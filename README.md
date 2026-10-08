@@ -1,4 +1,4 @@
-<h1 align="center">Claude Cache Compactor</h1>
+<h1 align="center"><img src="assets/wordmark.svg" width="600" alt="Claude Cache Compactor: Claude Code Dept. of Sanitation, pickup 58 minutes after your last request"></h1>
 <p align="center"><strong>Compacts an idle Claude Code session before its prompt cache goes stale.</strong></p>
 <p align="center">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-6e7781?style=flat-square&labelColor=30363d">
@@ -35,7 +35,7 @@ There's nothing to do: it runs in every interactive session.
 - **See what's scheduled:** `/cache-compactor:status` says when the session will be compacted, or why it won't be, and what happened last time.
 - **Small conversations are left alone:** under 30k tokens (the Messages row of `/context`), compacting costs about as much as it saves. See `minTokens`.
 - **Only while Claude Code runs:** the timer lives in the Claude Code process. If the computer sleeps through the cache's last minutes, it wakes to an expired cache and leaves the session alone.
-- **Resumed sessions** (`--continue`, `--resume`) count from their last response, so one resumed within the hour still gets compacted.
+- **Resumed sessions** (`--continue`, `--resume`) count from their last response, so one resumed within the hour still gets compacted. One whose last event was a compaction waits for your next prompt.
 - **Headless runs** (`claude -p`) are never compacted.
 
 ## How it works
@@ -101,19 +101,19 @@ Set them in `/plugin` → cache-compactor, or in `~/.claude/settings.json`.
 
 ## What it hooks
 
-The plugin is a mod: TypeScript in [hooks/register.ts](hooks/register.ts). Besides these events, it reads only Claude Code's prompt-caching variables (listed above), the `promptCacheTtl` setting, the session's model and its usage figures. It sends nothing anywhere: its one request is the compaction, made by Claude Code.
+The plugin is a mod: TypeScript in [hooks/register.ts](hooks/register.ts). Besides these events, it reads only Claude Code's prompt-caching variables (listed above), the `promptCacheTtl` setting, the session's model, its usage figures and, when a session is resumed, its transcript. In its own store it keeps the ids of sessions whose last event was a compaction. It sends nothing anywhere: its one request is the compaction, made by Claude Code.
 
 - **`turn.start`:** cancels the timer while a turn runs.
 - **`turn.step`:** notes when each main-conversation request starts. Subagents' requests have a cache of their own.
 - **`turn.complete`:** sets the timer, counted from the turn's last request.
 - **`session.compact`:** notes any compaction of the main conversation as the last thing that happened.
-- **`classic.SessionStart`:** counts a resumed session from its last response.
+- **`classic.SessionStart`:** counts a resumed session from its last response, unless a compaction came after it.
 - **`session.end`:** clears the timer on `/clear`.
 - **`prompt.submit`:** names invalid settings, once.
 - **`command.run`:** answers `/cache-compactor:status`.
 
 ```
-claude plugin test .   # 32 tests
+claude plugin test .   # 36 tests
 ```
 
 ## Sources

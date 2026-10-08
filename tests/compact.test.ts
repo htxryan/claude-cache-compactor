@@ -15,6 +15,7 @@ const SUMMARY = { messages: [{ role: 'user', text: 'Summary of the conversation 
 // subscription's by default). `vars` and `promptCacheTtl`: Claude Code's
 // prompt-caching variables and setting.
 type Env = {
+  transcript?: { role: 'user' | 'assistant'; text?: string }[]
   tokens?: number
   compact?: 'ok' | 'skip' | 'reject'
   surfaces?: string[]
@@ -22,6 +23,7 @@ type Env = {
   vars?: Record<string, string>
   promptCacheTtl?: string
   whileArming?: ($: any) => Promise<void>
+  store?: Record<string, unknown>
 }
 const PLAN = [{ kind: 'five_hour', percentUsed: 12 }, { kind: 'seven_day', percentUsed: 40 }]
 const HOUR: { ttlMs: number; why: string } = { ttlMs: 60 * MIN, why: 'Claude subscription' }
@@ -30,6 +32,8 @@ const HOUR: { ttlMs: number; why: string } = { ttlMs: 60 * MIN, why: 'Claude sub
 function engine(on: On, env: Env = {}) {
   const calls = { compacts: [] as string[], logs: [] as string[], debug: [] as string[], status: [] as (string | undefined)[] }
   const clock = mock.clock(on, { now: T0 })
+  mock.store(on, env.store ?? {})
+  on('session.id', () => value('s1'))
   const value = <T>(v: T) => ({ value: v }) as never
   on('session.surfaces', async $ => {
     const run = env.whileArming
@@ -44,6 +48,7 @@ function engine(on: On, env: Env = {}) {
     return value({ startedAt: T0, context: { tokens: 40_000 + (env.tokens ?? 112_000), window: 1_000_000, percent: 15, breakdown }, rateLimits: env.rateLimits ?? PLAN })
   })
   on('session.model', () => value('claude-opus-5-5'))
+  on('session.messages', () => value((env.transcript ?? [{ role: 'user' }, { role: 'assistant' }]).map(m => ({ text: '', toolUses: [], ...m }))))
   on('settings.read', () => value(env.promptCacheTtl ? { promptCacheTtl: env.promptCacheTtl } : {}))
   mock.env(on, env.vars ?? {})
   on('session.compact', (_$, e) => {
@@ -403,11 +408,52 @@ describe('resumed sessions', () => {
     expect(calls.compacts).toEqual(['compact:'])
   })
 
+  test('one this plugin saw compacted is left alone', async ($, on) => {
+    const { calls, clock } = engine(on, { store: { compacted: { s1: T0 - 25 * MIN } } })
+    await resume($, 20 * 60)
+    await clock.advance(3 * 60 * MIN)
+    expect(calls.compacts).toEqual([])
+    expect(await status($)).toBe('Not scheduled: the last thing that happened was a compaction. The timer starts again after your next prompt.')
+  })
+
+  test('one compacted before the plugin knew it is left alone: a summary and only kept replies after it', async ($, on) => {
+    const summary = 'This session is being continued from a previous conversation that ran out of context.'
+    const { calls, clock } = engine(on, { transcript: [{ role: 'user', text: summary }, { role: 'assistant', text: '' }, { role: 'assistant', text: 'Done.' }] })
+    await resume($, 20 * 60)
+    await clock.advance(3 * 60 * MIN)
+    expect(calls.compacts).toEqual([])
+  })
+
+  test('one with a prompt after its last compaction counts', async ($, on) => {
+    const summary = 'This session is being continued from a previous conversation that ran out of context.'
+    const { calls, clock } = engine(on, { transcript: [{ role: 'user', text: summary }, { role: 'user', text: 'next thing' }, { role: 'assistant', text: 'Done.' }] })
+    await resume($, 20 * 60)
+    await clock.advance(38 * MIN)
+    expect(calls.compacts).toEqual(['compact:'])
+  })
+
+  test('the plugin remembers its compaction until the next turn', async ($, on) => {
+    const { calls, clock } = engine(on)
+    const reopen = async () => {
+      await $.session.end({ sessionId: 's1', reason: 'other' } as never)
+      await resume($, 60)
+    }
+    await turn($, clock)
+    await clock.advance(58 * MIN)
+    await reopen()
+    expect(await status($)).toStartWith('Not scheduled: the last thing that happened was a compaction.')
+    await turn($, clock)
+    await reopen()
+    expect(await status($)).toStartWith('Compacts in 57 min')
+    expect(calls.compacts).toEqual(['compact:'])
+  })
+
   test('one resumed after the cache expired is left alone', async ($, on) => {
     const { calls, clock } = engine(on)
     await resume($, 3 * 60 * 60)
     await clock.advance(3 * 60 * MIN)
     expect(calls.compacts).toEqual([])
-    expect(calls.debug).toEqual(["didn't compact: the cache had already expired (3 h since the last request, so the computer was probably asleep)."])
+    expect(calls.debug).toEqual([])
+    expect(await status($)).toBe('Not scheduled: the cache expired 5 h ago.')
   })
 })

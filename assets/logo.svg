@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Claude Cache Compactor logo">
+  <rect width="256" height="256" rx="58.9" fill="#0f5132"/>
+  <circle cx="128" cy="128" r="92" fill="#f8f9fa"/>
+  <circle cx="128" cy="128" r="79.12" fill="#0f5132"/>
+  <path d="M139.57 81.58 A47.84 47.84 0 0 1 175.48 122.16" fill="none" stroke="#f8f9fa" stroke-width="11.96" stroke-linecap="butt"/>
+  <path d="M192.24 116.16 L173.99 141.19 L157.86 122.50 Z" fill="#f8f9fa"/>
+  <path d="M162.41 161.23 A47.84 47.84 0 0 1 109.31 172.04" fill="none" stroke="#f8f9fa" stroke-width="11.96" stroke-linecap="butt"/>
+  <path d="M106.14 189.55 L93.59 161.23 L117.84 156.61 Z" fill="#f8f9fa"/>
+  <path d="M82.01 141.19 A47.84 47.84 0 0 1 99.20 89.80" fill="none" stroke="#f8f9fa" stroke-width="11.96" stroke-linecap="butt"/>
+  <path d="M85.63 78.29 L116.43 81.58 L108.31 104.89 Z" fill="#f8f9fa"/>
+</svg>
