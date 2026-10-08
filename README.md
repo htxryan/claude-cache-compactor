@@ -7,6 +7,10 @@
 </p>
 <p align="center"><a href="#install">Install</a> · <a href="#how-it-works">How it works</a> · <a href="#settings">Settings</a></p>
 
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/d20cc53f-7970-4dc2-b845-a9cf7e9bfe90" width="720" controls muted playsinline></video>
+</div>
+
 On a Claude subscription, Claude Code keeps your conversation in Anthropic's prompt cache for an hour, and every request resets that hour. Step away for longer and your next prompt sends the whole conversation again, written back to the cache at twice the normal input price.
 
 Cache Compactor compacts the session two minutes before the cache expires, while compacting is still cheap:
