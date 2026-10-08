@@ -11,6 +11,8 @@
   <video src="https://github.com/user-attachments/assets/d20cc53f-7970-4dc2-b845-a9cf7e9bfe90" width="720" controls muted playsinline></video>
 </div>
 
+<p align="center"><img src="assets/cache-diagram.svg" width="760" alt="Coming back to a 500k-token session after 2 hours on Opus 5.5: without Cache Compactor the expired cache means the next prompt re-sends and re-caches all 500k tokens for $4.00; with it, the session is compacted to 60k at 58 minutes for $1.89 and the next prompt costs $0.48, $2.37 in all."></p>
+
 On a Claude subscription, Claude Code keeps your conversation in Anthropic's prompt cache for an hour, and every request resets that hour. Step away for longer and your next prompt sends the whole conversation again, written back to the cache at twice the normal input price.
 
 Cache Compactor compacts the session two minutes before the cache expires, while compacting is still cheap:
@@ -125,7 +127,7 @@ claude plugin test .   # 40 tests
 ## Sources
 
 - [How Claude Code uses prompt caching](https://code.claude.com/docs/en/prompt-caching): the TTLs, the variables and settings, and how `/compact` reads the cache.
-- [Prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching): cache writes cost 1.25× base input for five minutes and 2× for an hour, reads 0.1×.
+- [Prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) and [pricing](https://platform.claude.com/docs/en/about-claude/pricing): cache writes cost 1.25× base input for five minutes and 2× for an hour; reads cost 0.1×, or 0.05× on the 5.5 models. The diagram uses Opus 5.5 list prices.
 
 ---
 

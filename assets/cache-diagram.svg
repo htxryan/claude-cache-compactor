@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="480" viewBox="0 0 900 480" role="img" aria-label="Without and with Cache Compactor on a timeline" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<rect x="0.5" y="0.5" width="899" height="479" rx="14" fill="#ffffff" stroke="#d1d9e0"/>
+<text x="32" y="46" font-size="22" fill="#1f2328" font-weight="700" text-anchor="start" >Coming back to a 500k-token session after a 2-hour break</text>
+<text x="32" y="72" font-size="14" fill="#59636e" font-weight="400" text-anchor="start" >Claude keeps your conversation in a prompt cache for 1 hour after each request. Inside that hour, re-reading it</text>
+<text x="32" y="92" font-size="14" fill="#59636e" font-weight="400" text-anchor="start" >costs 5% of the normal input price. After it, the whole conversation is sent again and written back at 200%.</text>
+<line x1="240.0" y1="410" x2="858.0" y2="410" stroke="#d1d9e0" stroke-width="2"/>
+<line x1="240.0" y1="404" x2="240.0" y2="416" stroke="#59636e" stroke-width="2"/>
+<text x="240.0" y="434" font-size="12" fill="#59636e" font-weight="400" text-anchor="start" >last request</text>
+<line x1="538.7" y1="404" x2="538.7" y2="416" stroke="#59636e" stroke-width="2"/>
+<text x="534.7" y="434" font-size="12" fill="#59636e" font-weight="400" text-anchor="end" >58 min</text>
+<line x1="549.0" y1="404" x2="549.0" y2="416" stroke="#59636e" stroke-width="2"/>
+<text x="553.0" y="434" font-size="12" fill="#59636e" font-weight="400" text-anchor="start" >60 min</text>
+<line x1="858.0" y1="404" x2="858.0" y2="416" stroke="#59636e" stroke-width="2"/>
+<text x="862.0" y="434" font-size="12" fill="#59636e" font-weight="400" text-anchor="end" >you're back</text>
+<line x1="549.0" y1="130" x2="549.0" y2="410" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="4 4"/>
+<text x="555.0" y="128" font-size="12" fill="#cf222e" font-weight="600" text-anchor="start" >cache expires</text>
+<text x="32" y="176" font-size="15" fill="#1f2328" font-weight="700" text-anchor="start" >Without</text>
+<text x="32" y="196" font-size="12" fill="#59636e" font-weight="400" text-anchor="start" >the cache just expires</text>
+<rect x="240.0" y="164" width="309.0" height="14" rx="7" fill="#1a7f37"/>
+<text x="250.0" y="175" font-size="11" fill="#fff" font-weight="600" text-anchor="start" >cache warm · 500k</text>
+<rect x="549.0" y="164" width="309.0" height="14" rx="7" fill="none" stroke="#afb8c1" stroke-dasharray="5 4"/>
+<text x="703.5" y="175" font-size="11" fill="#59636e" font-weight="400" text-anchor="middle" >expired</text>
+<rect x="648.0" y="190" width="210" height="72" rx="9" fill="#cf222e" fill-opacity=".08" stroke="#cf222e"/>
+<text x="660.0" y="212" font-size="14" fill="#cf222e" font-weight="700" text-anchor="start" >Your next prompt: $4.00</text>
+<text x="660.0" y="230" font-size="13" fill="#1f2328" font-weight="400" text-anchor="start" >all 500k tokens re-sent</text>
+<text x="660.0" y="248" font-size="13" fill="#1f2328" font-weight="400" text-anchor="start" >and re-cached at 2×</text>
+<text x="32" y="306" font-size="15" fill="#1f2328" font-weight="700" text-anchor="start" >With Cache Compactor</text>
+<text x="32" y="326" font-size="12" fill="#59636e" font-weight="400" text-anchor="start" >compacts while the cache is warm</text>
+<rect x="240.0" y="294" width="298.70000000000005" height="14" rx="7" fill="#1a7f37"/>
+<text x="250.0" y="305" font-size="11" fill="#fff" font-weight="600" text-anchor="start" >cache warm · 500k</text>
+<rect x="538.7" y="297" width="319.29999999999995" height="8" rx="4" fill="none" stroke="#afb8c1" stroke-dasharray="5 4"/>
+<circle cx="538.7" cy="301" r="11" fill="#0f5132"/>
+<path d="M533.7 297 h10 M533.7 305 h10 M538.7 293 v4 M538.7 305 v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+<rect x="320.70000000000005" y="322" width="210" height="72" rx="9" fill="#0f5132" fill-opacity=".08" stroke="#0f5132"/>
+<text x="332.70000000000005" y="344" font-size="14" fill="#0f5132" font-weight="700" text-anchor="start" >Compaction: $1.89</text>
+<text x="332.70000000000005" y="362" font-size="13" fill="#1f2328" font-weight="400" text-anchor="start" >500k → 60k, while the</text>
+<text x="332.70000000000005" y="380" font-size="13" fill="#1f2328" font-weight="400" text-anchor="start" >cache is still warm</text>
+<rect x="648.0" y="322" width="210" height="72" rx="9" fill="#0f5132" fill-opacity=".08" stroke="#0f5132"/>
+<text x="660.0" y="344" font-size="14" fill="#0f5132" font-weight="700" text-anchor="start" >Your next prompt: $0.48</text>
+<text x="660.0" y="362" font-size="13" fill="#1f2328" font-weight="400" text-anchor="start" >only 60k re-cached</text>
+<text x="660.0" y="380" font-size="13" fill="#1f2328" font-weight="700" text-anchor="start" >total $2.37 · saves $1.63</text>
+<text x="32" y="464" font-size="11" fill="#59636e" font-weight="400" text-anchor="start" >Example: Opus 5.5 list prices; a session of 50k system prompt and tools + 450k conversation. Claude Code's compaction re-sends the conversation uncached.</text>
+</svg>
