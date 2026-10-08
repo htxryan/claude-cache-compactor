@@ -112,19 +112,12 @@ const resume = ($: any, secondsAgo: number) =>
 describe('timing logic', () => {
   test('reads the settings and falls back on bad values', () => {
     const invalid: string[] = []
-    expect(readSettings({}, invalid)).toEqual({ cacheTtl: 'auto', leadMs: 120_000, minTokens: DEFAULTS.minTokens, instructions: '' })
-    expect(readSettings({ cacheTtl: '5M', leadSeconds: 30, minTokens: 0, instructions: ' keep the plan ' }, invalid)).toEqual({ cacheTtl: '5m', leadMs: 30_000, minTokens: 0, instructions: 'keep the plan' })
-    expect(readSettings({ cacheTtl: 'Auto' }, invalid).cacheTtl).toBe('auto')
+    expect(readSettings({}, invalid)).toEqual({ minCacheTtlMs: 60 * MIN, leadMs: 120_000, minTokens: DEFAULTS.minTokens, instructions: '' })
+    expect(readSettings({ minCacheTtlSeconds: 300, leadSeconds: 30, minTokens: 0, instructions: ' keep the plan ' }, invalid)).toEqual({ minCacheTtlMs: 5 * MIN, leadMs: 30_000, minTokens: 0, instructions: 'keep the plan' })
     expect(invalid).toEqual([])
-    const bad = readSettings({ cacheTtl: '2h', leadSeconds: 9999, minTokens: 'lots' }, invalid)
-    expect(bad).toMatchObject({ cacheTtl: 'auto', leadMs: 120_000, minTokens: DEFAULTS.minTokens })
-    expect(invalid).toEqual(['cacheTtl "2h" (expected auto, 1h or 5m; using auto)', 'leadSeconds "9999" (using 120)', 'minTokens "lots" (using 30000)'])
-  })
-
-  test('a lead as long as a five-minute cache is refused', () => {
-    const invalid: string[] = []
-    expect(readSettings({ cacheTtl: '5m', leadSeconds: 300 }, invalid).leadMs).toBe(120_000)
-    expect(invalid).toEqual(['leadSeconds "300" (using 120)'])
+    const bad = readSettings({ minCacheTtlSeconds: -5, leadSeconds: 3600, minTokens: 'lots' }, invalid)
+    expect(bad).toMatchObject({ minCacheTtlMs: 60 * MIN, leadMs: 120_000, minTokens: DEFAULTS.minTokens })
+    expect(invalid).toEqual(['minCacheTtlSeconds "-5" (using 3600)', 'leadSeconds "3600" (using 120)', 'minTokens "lots" (using 30000)'])
   })
 
   test('works out how long the cache lasts as Claude Code does', () => {
@@ -133,7 +126,7 @@ describe('timing logic', () => {
     expect(resolveCache(auto, sig())).toEqual(HOUR)
     expect(resolveCache(auto, sig({ rateLimits: [] }))).toEqual({
       ttlMs: null,
-      why: 'the prompt cache lasts only 5 min here (no Claude plan usage reported, so an API key), too short to wait for. Set cacheTtl to 5m to compact anyway',
+      why: 'the prompt cache lasts only 5 min here (no Claude plan usage reported, so an API key), under minCacheTtlSeconds (3600). Set minCacheTtlSeconds to 300 or less to compact these sessions too',
     })
     expect(resolveCache(auto, sig({ rateLimits: [{ kind: 'five_hour', percentUsed: 100 }, { kind: 'seven_day', percentUsed: 60 }] })).ttlMs).toBe(null)
     expect(resolveCache(auto, sig({ rateLimits: [], env: { ENABLE_PROMPT_CACHING_1H: '1' } }))).toEqual({ ttlMs: 60 * MIN, why: 'ENABLE_PROMPT_CACHING_1H' })
@@ -143,10 +136,14 @@ describe('timing logic', () => {
     expect(resolveCache(auto, sig({ env: { CLAUDE_CODE_USE_BEDROCK: '1' } })).ttlMs).toBe(null)
     expect(resolveCache(auto, sig({ env: { DISABLE_PROMPT_CACHING_OPUS: '1' } }))).toEqual({ ttlMs: null, why: 'prompt caching is off (DISABLE_PROMPT_CACHING_OPUS)' })
     expect(resolveCache(auto, sig({ env: { DISABLE_PROMPT_CACHING_SONNET: '1' } }))).toEqual(HOUR)
-    // The setting names the lifetime outright; turning caching off still wins.
-    const five = readSettings({ cacheTtl: '5m' }, [])
-    expect(resolveCache(five, sig())).toEqual({ ttlMs: 5 * MIN, why: 'the cacheTtl setting says 5m' })
+    // A lower minCacheTtlSeconds takes five-minute caches too; turning caching off still wins.
+    const five = readSettings({ minCacheTtlSeconds: 300 }, [])
+    expect(resolveCache(five, sig({ rateLimits: [] }))).toEqual({ ttlMs: 5 * MIN, why: 'no Claude plan usage reported, so an API key' })
     expect(resolveCache(five, sig({ env: { DISABLE_PROMPT_CACHING: '1' } })).ttlMs).toBe(null)
+    expect(resolveCache(readSettings({ minCacheTtlSeconds: 300, leadSeconds: 300 }, []), sig({ rateLimits: [] }))).toEqual({
+      ttlMs: null,
+      why: "leadSeconds (300) is no shorter than this session's 5 min prompt cache",
+    })
   })
 
   test('compacts only an idle, compactable session with the cache still warm', () => {
@@ -279,20 +276,20 @@ describe('compacting an idle session', () => {
     expect(calls.compacts).toEqual(['compact:Keep the open TODOs.'])
   })
 
-  test('follows cacheTtl and leadSeconds', { options: { cacheTtl: '5m', leadSeconds: 30 } }, async ($, on) => {
+  test('follows leadSeconds', { options: { leadSeconds: 300 } }, async ($, on) => {
     const { calls, clock } = engine(on)
     await turn($, clock)
-    await clock.advance(4.5 * MIN - 1)
+    await clock.advance(55 * MIN - 1)
     expect(calls.compacts).toEqual([])
     await clock.advance(1)
     expect(calls.compacts).toEqual(['compact:'])
   })
 
-  test('names invalid settings once', { options: { cacheTtl: '2h' } }, async ($, on) => {
+  test('names invalid settings once', { options: { minCacheTtlSeconds: -5 } }, async ($, on) => {
     const { calls, clock } = engine(on)
     await turn($, clock)
     await turn($, clock)
-    expect(calls.logs).toEqual(['ignoring invalid settings: cacheTtl "2h" (expected auto, 1h or 5m; using auto).'])
+    expect(calls.logs).toEqual(['ignoring invalid settings: minCacheTtlSeconds "-5" (using 3600).'])
   })
 })
 
@@ -438,11 +435,11 @@ describe('how long the cache lasts', () => {
     await clock.advance(3 * 60 * MIN)
     expect(calls.compacts).toEqual([])
     expect(await status($)).toBe(
-      'Off: the prompt cache lasts only 5 min here (no Claude plan usage reported, so an API key), too short to wait for. Set cacheTtl to 5m to compact anyway.',
+      'Off: the prompt cache lasts only 5 min here (no Claude plan usage reported, so an API key), under minCacheTtlSeconds (3600). Set minCacheTtlSeconds to 300 or less to compact these sessions too.',
     )
   })
 
-  test('cacheTtl 5m compacts an API-key session after its short wait', { options: { cacheTtl: '5m' } }, async ($, on) => {
+  test('minCacheTtlSeconds 300 compacts an API-key session after its short wait', { options: { minCacheTtlSeconds: 300 } }, async ($, on) => {
     const { calls, clock } = engine(on, { rateLimits: [] })
     await turn($, clock)
     await clock.advance(3 * MIN)

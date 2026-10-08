@@ -4,13 +4,13 @@
 export type Ttl = '5m' | '1h'
 
 export type Settings = {
-  cacheTtl: 'auto' | Ttl // how long the prompt cache lasts; auto works it out
+  minCacheTtlMs: number // sessions whose cache lasts less are left alone
   leadMs: number // how long before it expires to compact
   minTokens: number // smaller conversations are left alone
   instructions: string // what the summary should keep, as typed after /compact
 }
 
-export const DEFAULTS = { leadSeconds: 120, minTokens: 30000 } as const
+export const DEFAULTS = { minCacheTtlSeconds: 3600, leadSeconds: 120, minTokens: 30000 } as const
 
 const TTL_MS: Record<Ttl, number> = { '5m': 5 * 60_000, '1h': 60 * 60_000 }
 
@@ -30,21 +30,16 @@ const asTtl = (v: unknown): Ttl | null => {
 }
 
 export function readSettings(options: Readonly<Record<string, unknown>>, invalid: string[]): Settings {
-  const raw = options.cacheTtl
-  const blank = raw === undefined || raw === null || String(raw).trim() === '' || String(raw).trim().toLowerCase() === 'auto'
-  const cacheTtl = blank ? 'auto' : (asTtl(raw) ?? 'auto')
-  if (!blank && cacheTtl === 'auto') invalid.push(`cacheTtl "${String(raw)}" (expected auto, 1h or 5m; using auto)`)
-  // The lead has to leave some of the cache's life before it.
-  const longest = cacheTtl === '5m' ? 300 : 3600
-  const leadSeconds = num('leadSeconds', options.leadSeconds, Math.min(DEFAULTS.leadSeconds, longest / 2), n => n >= 0 && n < longest, invalid)
+  const minCacheTtlSeconds = num('minCacheTtlSeconds', options.minCacheTtlSeconds, DEFAULTS.minCacheTtlSeconds, n => n >= 0, invalid)
+  const leadSeconds = num('leadSeconds', options.leadSeconds, DEFAULTS.leadSeconds, n => n >= 0 && n < 3600, invalid)
   const minTokens = num('minTokens', options.minTokens, DEFAULTS.minTokens, n => n >= 0, invalid)
   const instructions = typeof options.instructions === 'string' ? options.instructions.trim() : ''
-  return { cacheTtl, leadMs: leadSeconds * 1000, minTokens, instructions }
+  return { minCacheTtlMs: minCacheTtlSeconds * 1000, leadMs: leadSeconds * 1000, minTokens, instructions }
 }
 
 // How long this session's cache lasts, and how that was decided. `ttlMs` is
-// null when there is nothing to do: caching is off, or the cache lasts only
-// five minutes and the setting didn't ask for that.
+// null when there is nothing to do: caching is off, the cache lasts less than
+// minCacheTtlSeconds, or no shorter than leadSeconds.
 export type Cache = { ttlMs: number | null; why: string }
 
 // What the session tells about its cache: Claude Code's environment variables
@@ -68,10 +63,13 @@ export function resolveCache(s: Settings, sig: Signals): Cache {
   const family = FAMILIES.find(f => sig.model.toLowerCase().includes(f))
   const off = ['DISABLE_PROMPT_CACHING', ...(family ? [`DISABLE_PROMPT_CACHING_${family.toUpperCase()}`] : [])].find(name => on(sig.env[name]))
   if (off) return { ttlMs: null, why: `prompt caching is off (${off})` }
-  if (s.cacheTtl !== 'auto') return { ttlMs: TTL_MS[s.cacheTtl], why: `the cacheTtl setting says ${s.cacheTtl}` }
   const [ttl, why] = autoTtl(sig)
-  if (ttl === '5m') return { ttlMs: null, why: `the prompt cache lasts only 5 min here (${why}), too short to wait for. Set cacheTtl to 5m to compact anyway` }
-  return { ttlMs: TTL_MS[ttl], why }
+  const ttlMs = TTL_MS[ttl]
+  if (ttlMs < s.minCacheTtlMs) {
+    return { ttlMs: null, why: `the prompt cache lasts only ${duration(ttlMs)} here (${why}), under minCacheTtlSeconds (${s.minCacheTtlMs / 1000}). Set minCacheTtlSeconds to ${ttlMs / 1000} or less to compact these sessions too` }
+  }
+  if (s.leadMs >= ttlMs) return { ttlMs: null, why: `leadSeconds (${s.leadMs / 1000}) is no shorter than this session's ${duration(ttlMs)} prompt cache` }
+  return { ttlMs, why }
 }
 
 function autoTtl(sig: Signals): [Ttl, string] {

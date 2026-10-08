@@ -59,20 +59,20 @@ sequenceDiagram
     end
 ```
 
-**How long the cache lasts.** Claude Code uses [a one-hour cache on a Claude subscription and five minutes otherwise](https://code.claude.com/docs/en/prompt-caching). With `cacheTtl` on `auto`, the plugin follows the same rules, in this order:
+**How long the cache lasts.** Claude Code uses [a one-hour cache on a Claude subscription and five minutes otherwise](https://code.claude.com/docs/en/prompt-caching). The plugin works out each session's cache by the same rules, in this order:
 
 1. `DISABLE_PROMPT_CACHING` (or the variable for the session's model) turns caching off, and the plugin with it.
 2. `FORCE_PROMPT_CACHING_5M`, then `CLAUDE_CODE_PROMPT_CACHE_TTL`, then the `promptCacheTtl` setting, then `ENABLE_PROMPT_CACHING_1H`.
 3. Bedrock, Vertex and Foundry (`CLAUDE_CODE_USE_*`) use five minutes.
 4. Otherwise, a Claude subscription is told by the plan's usage windows the last response reported: one hour, or five minutes once a window is past 100% and Claude Code draws on usage credits. With no plan windows, it's an API key: five minutes.
 
-A five-minute cache is too short to wait for, so in `auto` the plugin leaves those sessions alone. Set `cacheTtl` to `5m` to compact them anyway, three minutes after each request by default.
+By default the plugin acts only on one-hour caches: on a five-minute cache it would compact after every short pause. Set `minCacheTtlSeconds` to `300` to take those sessions too. They then compact 5 minutes minus `leadSeconds` after each request: three minutes by default. To give an API-key session a one-hour cache, set Claude Code's own `promptCacheTtl` to `1h`; the plugin follows it.
 
 ## Settings
 
 Set them in `/plugin` → cache-compactor, or in `~/.claude/settings.json`.
 
-- **`cacheTtl`:** `auto` (the default) works out how long the prompt cache lasts, as above. `1h` or `5m` says so outright.
+- **`minCacheTtlSeconds`:** the shortest prompt cache the plugin acts on at all: 3600 by default, so only one-hour caches. `300` or less also takes five-minute caches. It never changes when the plugin compacts, which is always the cache's lifetime minus `leadSeconds`.
 - **`leadSeconds`:** how long before the cache expires to compact: 120 by default. It leaves time for the compaction's own request to start while the cache is warm.
 - **`minTokens`:** conversations smaller than this are left alone: 30000 by default, measured like the Messages row of `/context`. `0` compacts every idle session.
 - **`instructions`:** what the summary should keep, as you would type after `/compact`. Empty uses Claude Code's own.
@@ -82,10 +82,10 @@ Set them in `/plugin` → cache-compactor, or in `~/.claude/settings.json`.
   "pluginConfigs": {
     "cache-compactor@claude-cache-compactor": {
       "options": {
-        "cacheTtl": "auto",       // auto | 1h | 5m
-        "leadSeconds": 120,       // compact this long before the cache expires
-        "minTokens": 30000,       // 0 compacts every idle session
-        "instructions": ""        // e.g. "Keep the open TODOs and file paths."
+        "minCacheTtlSeconds": 3600, // act only on caches this long; 300 also takes five-minute ones
+        "leadSeconds": 120,         // compact this long before the cache expires
+        "minTokens": 30000,         // 0 compacts every idle session
+        "instructions": ""          // e.g. "Keep the open TODOs and file paths."
       }
     }
   }
@@ -115,7 +115,7 @@ The plugin is a mod: TypeScript in [hooks/register.ts](hooks/register.ts). Besid
 - **`command.run`:** answers `/cache-compactor:status`, `:off` and `:on`.
 
 ```
-claude plugin test .   # 41 tests
+claude plugin test .   # 40 tests
 ```
 
 ## Sources

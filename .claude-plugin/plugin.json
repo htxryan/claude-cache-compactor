@@ -18,6 +18,12 @@
     "token-savings"
   ],
   "userConfig": {
+    "minCacheTtlSeconds": {
+      "type": "number",
+      "title": "Shortest prompt cache to act on (seconds)",
+      "description": "The plugin does nothing in a session whose prompt cache lasts less. It never changes when it compacts (the cache's lifetime minus leadSeconds). 3600 acts only on one-hour caches (Claude subscriptions); 300 or less also takes five-minute caches (API keys, cloud providers, usage credits).",
+      "default": 3600
+    },
     "ttlMinutes": {
       "type": "number",
       "title": "Prompt cache lifetime (minutes)",
@@ -27,7 +33,7 @@
     "leadSeconds": {
       "type": "number",
       "title": "Compact this long before it expires (seconds)",
-      "description": "Leaves time for the compaction's own request to start while the cache is still warm.",
+      "description": "How long before the prompt cache expires to compact. Leaves time for the compaction's own request to start while the cache is still warm.",
       "default": 120
     },
     "minTokens": {
