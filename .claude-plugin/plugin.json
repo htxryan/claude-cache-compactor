@@ -1,6 +1,6 @@
 {
   "name": "cache-compactor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Compacts an idle Claude Code session just before its prompt cache expires, so coming back to it doesn't re-send the whole conversation at full price.",
   "author": {
     "name": "Ryan Henderson"

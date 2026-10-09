@@ -134,6 +134,26 @@ async function fire($: EngineInterface, ss: Session, s: Settings, at: number): P
   }
 }
 
+// A resumed session: still off if it was turned off, and its cache may still
+// be warm, so the timer counts from its last response, unless a compaction
+// came after it.
+async function resumed($: EngineInterface, ss: Session, s: Settings, secondsSinceResponse: number | undefined): Promise<void> {
+  if (await stored($, 'off')) {
+    ss.off = true
+    $.ui.status('auto-compact off')
+  }
+  if (secondsSinceResponse === undefined || ss.turning) return
+  if (await compactedLast($)) {
+    ss.lastWasCompact = ss.marked = true
+    return
+  }
+  const anchor = (await $.clock.now()) - secondsSinceResponse * 1000
+  await arm($, ss, s, () => {
+    ss.anchor = anchor
+    ss.lastWasCompact = false
+  })
+}
+
 export const register: Register = (on, options) => {
   const invalid: string[] = []
   const s = readSettings(options, invalid)
@@ -223,26 +243,10 @@ export const register: Register = (on, options) => {
     return result
   }).catch(($, e, next) => next(e))
 
-  // A resumed session's cache may still be warm: count from its last response,
-  // unless a compaction came after it.
+  // A resumed session: its settings and timer, then the event passes on unchanged.
   on('classic.SessionStart', async ($, e, next) => {
-    const result = await next(e)
-    if ((e.source === 'resume' || e.source === 'fork') && (await stored($, 'off'))) {
-      ss.off = true
-      $.ui.status('auto-compact off')
-    }
-    if ((e.source === 'resume' || e.source === 'fork') && e.seconds_since_last_response !== undefined && !ss.turning) {
-      if (await compactedLast($)) {
-        ss.lastWasCompact = ss.marked = true
-        return result
-      }
-      const anchor = (await $.clock.now()) - e.seconds_since_last_response * 1000
-      await arm($, ss, s, () => {
-        ss.anchor = anchor
-        ss.lastWasCompact = false
-      })
-    }
-    return result
+    if (e.source === 'resume' || e.source === 'fork') await resumed($, ss, s, e.seconds_since_last_response)
+    return next(e)
   }).catch(($, e, next) => next(e))
 
   // /clear, or /resume of another conversation, ends the session without a
