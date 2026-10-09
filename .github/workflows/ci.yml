@@ -27,9 +27,20 @@ jobs:
         run: claude plugin test .
       - name: Type check
         run: |
-          # Loading the plugin makes Claude Code lay this build's types in
-          # .claude-plugin/types/ (gitignored). CI isn't logged in, so the run
-          # stops right after the load.
-          claude -p --plugin-dir . "load the plugin" < /dev/null > /dev/null 2>&1 || true
-          test -f .claude-plugin/types/claude-code/index.d.ts
+          # Claude Code writes this build's types in .claude-plugin/types/
+          # (gitignored) only when an interactive session loads the plugin
+          # (since 2.1.295), so one starts in a pseudo-terminal with the
+          # first-run screens answered. It sends no prompt, its key is a
+          # placeholder and its API address a closed port, so nothing leaves
+          # the runner; it is stopped once the types are in.
+          key=sk-ant-ci-placeholder-0000000000000000
+          printf '{"hasCompletedOnboarding":true,"theme":"dark","customApiKeyResponses":{"approved":["%s"],"rejected":[]},"projects":{"%s":{"hasTrustDialogAccepted":true}}}\n' "${key: -20}" "$PWD" > ~/.claude.json
+          sleep 60 | ANTHROPIC_API_KEY=$key ANTHROPIC_BASE_URL=http://127.0.0.1:9 timeout 60 script -qfec "claude --plugin-dir ." /dev/null > /dev/null &
+          for _ in $(seq 60); do
+            test -f .claude-plugin/types/tsconfig.json && test -f .claude-plugin/types/claude-code/index.d.ts && break
+            sleep 1
+          done
+          sleep 1
+          kill %1 2>/dev/null || true
+          head -1 .claude-plugin/types/claude-code/index.d.ts
           npx -y -p typescript@5.6 tsc -p . --noEmit
